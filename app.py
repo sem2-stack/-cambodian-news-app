@@ -1,7 +1,6 @@
 import streamlit as st
 import torch
 import datetime
-import json
 from huggingface_hub import hf_hub_download
 from transformers import RobertaTokenizerFast
 from model_def import NewsClassifier
@@ -15,331 +14,230 @@ COLORS = {
     "Health": "#ef4444",
     "Sports": "#f59e0b",
 }
-ICONS = {
-    "Politics": "🏛️",
-    "Technology": "💻",
-    "Economics": "📈",
-    "Health": "🏥",
-    "Sports": "⚽",
-}
 
-st.set_page_config(page_title="Cambodian News Classifier", layout="wide", page_icon="📰")
+st.set_page_config(page_title="Cambodian News Classifier", layout="wide")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# GLOBAL CSS
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------- GLOBAL STYLE ----------------
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+html, body, [class*="css"]  {
+    font-family: 'Inter', sans-serif;
+}
+.stApp {
+    background-color: #f5f6f8 !important;
+}
 
-.stApp { background: #f0f2f7 !important; }
-.block-container { padding-top: 0 !important; max-width: 1240px; }
-header[data-testid="stHeader"] { background: transparent; height: 0; }
-div[data-testid="stToolbar"] { display: none; }
+/* Hide Streamlit's default top toolbar so it doesn't overlap our navbar */
+header[data-testid="stHeader"] {
+    background: transparent;
+    height: 0;
+}
+div[data-testid="stToolbar"] {
+    display: none;
+}
 #MainMenu { visibility: hidden; }
 footer { visibility: hidden; }
 
-/* ── Navbar ── */
-.navbar {
-    background: linear-gradient(135deg, #0f2554 0%, #1e4db7 100%);
-    padding: 0 32px;
-    display: flex;
-    align-items: center;
-    height: 64px;
-    margin-bottom: 0;
-    box-shadow: 0 2px 12px rgba(15,37,84,0.2);
-}
-.navbar-brand { display: flex; align-items: center; gap: 14px; }
-.navbar-logo {
-    width: 38px; height: 38px; border-radius: 10px;
-    background: rgba(255,255,255,0.15);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 18px; border: 1px solid rgba(255,255,255,0.2);
-}
-.navbar-title { font-size: 15px; font-weight: 700; color: white; line-height: 1.2; }
-.navbar-sub { font-size: 10px; color: rgba(255,255,255,0.5); letter-spacing: 1px; text-transform: uppercase; }
+.block-container { padding-top: 2rem !important; max-width: 1200px; }
 
-/* ── Nav buttons ── */
+/* Make Streamlit's native buttons in the navbar look like white pill tabs */
 div[data-testid="column"] .stButton > button {
-    background: transparent !important;
-    color: rgba(255,255,255,0.65) !important;
-    border: none !important;
-    border-radius: 22px !important;
-    font-size: 13px !important;
-    font-weight: 500 !important;
-    padding: 7px 18px !important;
-    box-shadow: none !important;
-    transition: all 0.18s !important;
+    background-color: white;
+    color: #374151;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 13px;
 }
 div[data-testid="column"] .stButton > button[kind="primary"] {
-    background: rgba(255,255,255,0.15) !important;
-    color: white !important;
-    font-weight: 600 !important;
+    background-color: #14306b;
+    color: white;
+    border: none;
 }
-div[data-testid="column"] .stButton > button:hover {
-    background: rgba(255,255,255,0.1) !important;
-    color: white !important;
-}
-
-/* ── Cards ── */
-.card {
-    background: white;
-    border-radius: 16px;
-    padding: 28px;
-    border: 1px solid #e8eaf0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.03);
-}
-.card-title { font-size: 16px; font-weight: 700; color: #111827; margin-bottom: 2px; }
-.card-sub { font-size: 12px; color: #9ca3af; margin-bottom: 20px; }
-
-/* ── Tabs ── */
-.stTabs [data-baseweb="tab-list"] {
-    background: #f3f4f6 !important;
-    border-radius: 10px !important;
-    padding: 3px !important;
-    gap: 2px !important;
-    border: none !important;
-}
-.stTabs [data-baseweb="tab"] {
-    border-radius: 8px !important;
-    font-size: 13px !important;
-    font-weight: 500 !important;
-    padding: 6px 18px !important;
-    color: #6b7280 !important;
-    background: transparent !important;
-}
-.stTabs [aria-selected="true"] {
-    background: white !important;
+/* Text area / inputs forced to light styling */
+.stTextArea textarea, .stTextInput input {
+    background-color: #f9fafb !important;
     color: #111827 !important;
-    font-weight: 600 !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
+    border: 1px solid #e5e7eb !important;
 }
-.stTabs [data-baseweb="tab-border"] { display: none !important; }
-
-/* ── Inputs ── */
-.stTextArea textarea {
-    background: #f9fafb !important;
-    color: #111827 !important;
-    border: 1.5px solid #e5e7eb !important;
-    border-radius: 10px !important;
-    font-size: 13px !important;
-    resize: none !important;
-}
-.stTextArea textarea:focus {
-    border-color: #2563eb !important;
-    box-shadow: 0 0 0 3px rgba(37,99,235,0.1) !important;
-}
-.stTextInput input {
-    background: #f9fafb !important;
-    color: #111827 !important;
-    border: 1.5px solid #e5e7eb !important;
-    border-radius: 8px !important;
-    font-size: 13px !important;
-}
-
-/* ── Analyze button ── */
 .analyze-btn-wrap .stButton > button {
-    background: linear-gradient(135deg, #1e4db7 0%, #2563eb 100%) !important;
+    background-color: #16336e !important;
     color: white !important;
     border: none !important;
-    border-radius: 10px !important;
-    font-size: 14px !important;
-    font-weight: 700 !important;
-    padding: 12px 0 !important;
-    box-shadow: 0 4px 12px rgba(37,99,235,0.3) !important;
-    transition: all 0.2s !important;
+    font-weight: 700;
 }
 .analyze-btn-wrap .stButton > button:hover {
-    box-shadow: 0 6px 18px rgba(37,99,235,0.4) !important;
-    transform: translateY(-1px) !important;
+    background-color: #0f2554 !important;
 }
 
-/* ── Metric boxes ── */
+.navbar {
+    background: #16336e;
+    color: white;
+    padding: 14px 28px;
+    border-radius: 10px 10px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0;
+}
+.navbar-left { display: flex; align-items: center; gap: 12px; }
+.navbar-logo {
+    width: 34px; height: 34px; border-radius: 9px;
+    background: #2563eb; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 15px;
+}
+.navbar-title { font-size: 14px; font-weight: 700; line-height: 1.2; }
+.navbar-sub { font-size: 10px; opacity: 0.6; letter-spacing: 0.5px; }
+
+.navbar-wrap {
+    background: #16336e;
+    border-radius: 10px;
+    padding: 0 10px 8px 0;
+    margin-bottom: 26px;
+}
+div[data-testid="column"] .stButton > button {
+    background-color: transparent !important;
+    color: rgba(255,255,255,0.75) !important;
+    border: none !important;
+    border-radius: 18px;
+    font-weight: 500;
+    font-size: 13px;
+    box-shadow: none !important;
+}
+div[data-testid="column"] .stButton > button[kind="primary"] {
+    background-color: rgba(255,255,255,0.12) !important;
+    color: white !important;
+    font-weight: 600;
+}
+div[data-testid="column"] .stButton > button:hover {
+    color: white !important;
+}
+
+.card {
+    background: white;
+    border-radius: 14px;
+    padding: 26px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    border: 1px solid #eef0f3;
+}
+.section-title { font-size: 17px; font-weight: 700; color: #111827; margin-bottom: 2px; }
+.section-sub { font-size: 12px; color: #6b7280; margin-bottom: 18px; }
+
+.placeholder-box {
+    text-align: center;
+    padding: 70px 20px;
+    color: #6b7280;
+}
+.placeholder-icon {
+    width: 56px; height: 56px; border-radius: 14px;
+    background: #f3f4f6; display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 18px auto; font-size: 22px; color: #9ca3af;
+}
+.placeholder-title { font-size: 16px; font-weight: 700; color: #111827; margin-bottom: 8px; }
+.placeholder-text { font-size: 13px; color: #6b7280; max-width: 360px; margin: 0 auto 16px auto; }
+.feature-list { font-size: 13px; color: #16a34a; text-align: left; display: inline-block; }
+.feature-list div { margin-bottom: 4px; }
+
 .metric-box {
-    background: #f9fafb;
+    background: white;
     border: 1px solid #eef0f3;
     border-radius: 12px;
-    padding: 14px 18px;
+    padding: 16px 18px;
 }
-.metric-label { font-size: 11px; color: #9ca3af; letter-spacing: 0.7px; font-weight: 600; text-transform: uppercase; }
-.metric-num { font-size: 26px; font-weight: 800; color: #111827; margin-top: 4px; line-height: 1; }
-.metric-sub { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+.metric-label { font-size: 11px; color: #9ca3af; letter-spacing: 0.5px; font-weight: 600; }
+.metric-num { font-size: 26px; font-weight: 800; color: #111827; margin-top: 4px; }
+.metric-sub { font-size: 11px; color: #9ca3af; }
 
-/* ── Top result banner ── */
 .top-result {
-    border-radius: 14px;
-    padding: 22px 24px;
-    margin-bottom: 18px;
+    background: linear-gradient(135deg, #ede9fe, #f5f3ff);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
     position: relative;
-    overflow: hidden;
 }
-.top-result .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: rgba(255,255,255,0.8); }
-.top-result .result-icon { font-size: 30px; margin: 6px 0 2px; display: block; }
-.top-result .name { font-size: 30px; font-weight: 800; color: white; line-height: 1; }
+.top-result .tag { font-size: 12px; color: #7c3aed; font-weight: 700; }
+.top-result .name { font-size: 28px; font-weight: 800; color: #6d28d9; }
 .conf-badge {
-    position: absolute; top: 20px; right: 20px;
-    background: rgba(0,0,0,0.15);
-    color: white;
-    border-radius: 20px; padding: 5px 14px;
-    font-size: 12px; font-weight: 700;
-    border: 1px solid rgba(255,255,255,0.25);
+    position: absolute; top: 18px; right: 18px;
+    background: #7c3aed; color: white;
+    border-radius: 16px; padding: 4px 12px;
+    font-size: 12px; font-weight: 600;
 }
-
-/* ── Confidence bars ── */
-.bar-row { margin-bottom: 14px; }
-.bar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-.bar-label { font-size: 13px; font-weight: 600; color: #374151; }
-.bar-pct { font-size: 12px; font-weight: 700; }
-.bar-bg { background: #f3f4f6; border-radius: 8px; height: 8px; overflow: hidden; }
+.bar-row { margin-bottom: 12px; }
+.bar-label { font-size: 13px; font-weight: 600; }
+.bar-bg { background: #e5e7eb; border-radius: 8px; height: 9px; overflow: hidden; margin-top: 4px; }
 .bar-fill { height: 100%; border-radius: 8px; }
+.bar-pct { font-size: 12px; font-weight: 700; float: right; }
 
-/* ── Placeholder ── */
-.placeholder-box { text-align: center; padding: 60px 20px; }
-.placeholder-icon {
-    width: 64px; height: 64px; border-radius: 16px;
-    background: linear-gradient(135deg, #ede9fe, #dbeafe);
-    display: flex; align-items: center; justify-content: center;
-    margin: 0 auto 20px; font-size: 28px;
-}
-.placeholder-title { font-size: 17px; font-weight: 700; color: #111827; margin-bottom: 10px; }
-.placeholder-text { font-size: 13px; color: #6b7280; max-width: 340px; margin: 0 auto 20px; line-height: 1.6; }
-.feature-pill {
-    display: inline-flex; align-items: center; gap: 6px;
-    background: #f0fdf4; border: 1px solid #bbf7d0;
-    color: #16a34a; font-size: 12px; font-weight: 500;
-    border-radius: 20px; padding: 4px 12px; margin: 3px;
-}
-
-/* ── Section divider ── */
-.section-divider {
-    height: 1px;
-    background: linear-gradient(to right, transparent, #e5e7eb, transparent);
-    margin: 18px 0;
-}
-
-/* ── Success badge ── */
-.success-badge {
-    display: inline-flex; align-items: center; gap: 6px;
-    background: #f0fdf4; border: 1px solid #bbf7d0;
-    color: #16a34a; font-size: 12px; font-weight: 600;
-    border-radius: 20px; padding: 4px 12px; margin-top: 10px;
-}
-
-/* ── Action buttons ── */
-.action-btn-wrap .stButton > button {
-    background: white !important;
-    color: #374151 !important;
-    border: 1.5px solid #e5e7eb !important;
-    border-radius: 10px !important;
-    font-size: 13px !important;
-    font-weight: 600 !important;
-    padding: 9px 0 !important;
-    transition: all 0.15s !important;
-    box-shadow: none !important;
-}
-.action-btn-wrap .stButton > button:hover {
-    background: #f9fafb !important;
-    border-color: #d1d5db !important;
-}
-
-/* ── Download button ── */
-.stDownloadButton > button {
-    background: white !important;
-    color: #374151 !important;
-    border: 1.5px solid #e5e7eb !important;
-    border-radius: 10px !important;
-    font-size: 13px !important;
-    font-weight: 600 !important;
-    width: 100% !important;
-    box-shadow: none !important;
-}
-
-/* ── History rows ── */
 .history-row {
     background: white;
     border: 1px solid #eef0f3;
-    border-radius: 12px;
+    border-radius: 10px;
     padding: 14px 18px;
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 14px;
     margin-bottom: 10px;
 }
-.history-cat { font-weight: 700; font-size: 13px; min-width: 96px; }
-.history-text { font-size: 13px; color: #6b7280; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.history-conf { font-weight: 700; font-size: 13px; flex-shrink: 0; }
-.history-time { font-size: 11px; color: #d1d5db; flex-shrink: 0; }
-
-/* ── Page title ── */
-.page-title { font-size: 22px; font-weight: 800; color: #111827; margin-bottom: 2px; }
-.page-sub { font-size: 13px; color: #9ca3af; margin-bottom: 22px; }
-
-/* ── About ── */
-.about-label {
-    font-size: 11px; font-weight: 700; color: #9ca3af;
-    letter-spacing: 1px; text-transform: uppercase;
-    margin: 20px 0 8px;
-}
-.cat-pill {
-    display: inline-block;
-    color: white; border-radius: 20px;
-    padding: 4px 14px; font-size: 13px; font-weight: 600;
-    margin: 3px;
-}
-.warn-box {
-    background: #fffbeb; border: 1px solid #fde68a;
-    border-radius: 10px; padding: 14px 16px;
-    font-size: 13px; color: #92400e; line-height: 1.7;
-    margin-top: 8px;
-}
+.history-cat { font-weight: 700; font-size: 13px; width: 90px; }
+.history-text { font-size: 13px; color: #374151; flex: 1; padding: 0 14px; }
+.history-meta { font-size: 12px; color: #9ca3af; white-space: nowrap; }
+.history-conf { font-weight: 700; font-size: 13px; margin-right: 14px; }
 </style>
 """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SESSION STATE
-# ─────────────────────────────────────────────────────────────────────────────
-for key, default in [("page", "Classifier"), ("history", []), ("result", None), ("last_text", "")]:
-    if key not in st.session_state:
-        st.session_state[key] = default
+# ---------------- STATE ----------------
+if "page" not in st.session_state:
+    st.session_state.page = "Classifier"
+if "history" not in st.session_state:
+    st.session_state.history = []
+if "result" not in st.session_state:
+    st.session_state.result = None
+if "last_text" not in st.session_state:
+    st.session_state.last_text = ""
 
-# ─────────────────────────────────────────────────────────────────────────────
-# NAVBAR
-# ─────────────────────────────────────────────────────────────────────────────
-st.markdown("""
-<div class="navbar">
-    <div class="navbar-brand">
-        <div class="navbar-logo">📰</div>
-        <div>
-            <div class="navbar-title">Cambodian News Classifier</div>
-            <div class="navbar-sub">Multi-class AI Analysis</div>
+# ---------------- NAVBAR ----------------
+st.markdown('<div class="navbar-wrap">', unsafe_allow_html=True)
+nav_l, nav_r = st.columns([3, 2])
+with nav_l:
+    st.markdown("""
+    <div class="navbar">
+        <div class="navbar-left">
+            <div class="navbar-logo">CK</div>
+            <div>
+                <div class="navbar-title">Cambodian News Classifier</div>
+                <div class="navbar-sub">MULTI-CLASS AI ANALYSIS</div>
+            </div>
         </div>
     </div>
-</div>
-""", unsafe_allow_html=True)
-
-_, nav_r = st.columns([3, 2])
+    """, unsafe_allow_html=True)
 with nav_r:
+    st.write("")
     b1, b2, b3 = st.columns(3)
     with b1:
-        if st.button("📰 Classifier", use_container_width=True,
-                     type="primary" if st.session_state.page == "Classifier" else "secondary"):
-            st.session_state.page = "Classifier"; st.rerun()
+        if st.button("📰 Classifier ●" if st.session_state.page == "Classifier" else "📰 Classifier",
+                      use_container_width=True,
+                      type="primary" if st.session_state.page == "Classifier" else "secondary"):
+            st.session_state.page = "Classifier"
+            st.rerun()
     with b2:
-        if st.button("🕐 History", use_container_width=True,
-                     type="primary" if st.session_state.page == "History" else "secondary"):
-            st.session_state.page = "History"; st.rerun()
+        if st.button("🕐 Session History ●" if st.session_state.page == "History" else "🕐 Session History",
+                      use_container_width=True,
+                      type="primary" if st.session_state.page == "History" else "secondary"):
+            st.session_state.page = "History"
+            st.rerun()
     with b3:
-        if st.button("ℹ️ About", use_container_width=True,
-                     type="primary" if st.session_state.page == "About" else "secondary"):
-            st.session_state.page = "About"; st.rerun()
-
+        if st.button("ℹ️ About ●" if st.session_state.page == "About" else "ℹ️ About",
+                      use_container_width=True,
+                      type="primary" if st.session_state.page == "About" else "secondary"):
+            st.session_state.page = "About"
+            st.rerun()
+st.markdown('</div>', unsafe_allow_html=True)
 st.write("")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# MODEL
-# ─────────────────────────────────────────────────────────────────────────────
+
 @st.cache_resource
 def load_model():
     weights_path = hf_hub_download(repo_id=REPO_ID, filename="roberta_best.pt")
@@ -350,6 +248,7 @@ def load_model():
     tokenizer = RobertaTokenizerFast.from_pretrained("roberta-base")
     return model, tokenizer
 
+
 def classify(text):
     inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=512)
     with torch.no_grad():
@@ -357,59 +256,53 @@ def classify(text):
         probs = torch.softmax(logits, dim=-1)[0]
     return {LABELS[i]: probs[i].item() for i in range(len(LABELS))}
 
+
 def extract_pdf_text(file):
     from pypdf import PdfReader
     reader = PdfReader(file)
     return "\n".join((page.extract_text() or "") for page in reader.pages)
 
+
 model, tokenizer = load_model()
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PAGE: CLASSIFIER
-# ─────────────────────────────────────────────────────────────────────────────
+# =================== PAGE: CLASSIFIER ===================
 if st.session_state.page == "Classifier":
-    col1, col2 = st.columns(2, gap="medium")
+    col1, col2 = st.columns(2)
 
-    # ── LEFT ─────────────────────────────────────────────────────────────────
     with col1:
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown('<div class="card-title">Input Section</div>', unsafe_allow_html=True)
-        st.markdown('<div class="card-sub">Paste or upload a news article for classification</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Input Section</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-sub">Paste news text for classification</div>', unsafe_allow_html=True)
 
-        tab1, tab2 = st.tabs(["📄  Text Input", "⬆️  PDF Upload"])
+        tab1, tab2 = st.tabs(["📄 Text Input", "⬆️ PDF Upload"])
+
         text = ""
-
         with tab1:
-            st.caption("**Direct Text Entry** · _Paste any news article or headline_")
-            text = st.text_area(
-                "", height=280,
-                placeholder="Paste your news article here...\n\nThe government announced new economic policies today...",
-                label_visibility="collapsed", key="text_input_area"
-            )
+            st.caption("**Direct Text Entry**　·　_Perfect for copied articles or short texts_")
+            text = st.text_area("", height=260, placeholder="Paste your news article here...\n\nThe government announced new economic policies today...",
+                                 label_visibility="collapsed", key="text_input_area")
 
         with tab2:
-            st.caption("**PDF Upload** · _Upload a scanned or digital PDF article_")
+            st.caption("**PDF Upload**　·　_Upload a PDF news article_")
             pdf_file = st.file_uploader("", type=["pdf"], label_visibility="collapsed")
             if pdf_file is not None:
                 try:
                     text = extract_pdf_text(pdf_file)
-                    st.success(f"✅ Extracted {len(text):,} characters from PDF.")
+                    st.success(f"Extracted {len(text)} characters from PDF.")
                     with st.expander("Preview extracted text"):
-                        st.write(text[:1000] + ("…" if len(text) > 1000 else ""))
+                        st.write(text[:1000] + ("..." if len(text) > 1000 else ""))
                 except Exception as e:
                     st.error(f"Could not read PDF: {e}")
 
         n_chars = len(text)
-        n_words = len(text.split()) if text.strip() else 0
-        st.caption(f"**{n_chars:,}** chars · **{n_words}** words")
+        n_words = len(text.split()) if text else 0
+        st.caption(f"{n_chars:,} chars · {n_words} words")
 
         st.markdown('<div class="analyze-btn-wrap">', unsafe_allow_html=True)
-        analyze = st.button("✨  Analyze Text", use_container_width=True, type="primary", key="analyze_btn")
+        analyze = st.button("✨ Analyze Text", use_container_width=True, type="primary", key="analyze_btn")
         st.markdown('</div>', unsafe_allow_html=True)
-
         if analyze and text.strip():
-            with st.spinner("Running classification…"):
-                result = classify(text)
+            result = classify(text)
             st.session_state.result = result
             st.session_state.last_text = text
             top_label = max(result, key=result.get)
@@ -421,149 +314,103 @@ if st.session_state.page == "Classifier":
             })
             st.rerun()
         elif analyze:
-            st.warning("⚠️ Please paste some text or upload a PDF first.")
-
+            st.warning("Please paste text or upload a PDF first.")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── RIGHT ────────────────────────────────────────────────────────────────
     with col2:
         st.markdown('<div class="card">', unsafe_allow_html=True)
-
         if st.session_state.result:
             text_used = st.session_state.last_text
+            n_chars = len(text_used)
+            n_words = len(text_used.split())
             sorted_results = sorted(st.session_state.result.items(), key=lambda x: -x[1])
             top_label, top_score = sorted_results[0]
-            top_color = COLORS[top_label]
-            top_icon = ICONS[top_label]
 
-            # Top banner
             st.markdown(f"""
-            <div class="top-result" style="background:{top_color};">
-                <div class="tag">🏆 Top Classification</div>
-                <span class="result-icon">{top_icon}</span>
+            <div class="top-result">
+                <span class="tag">🏆 TOP CLASSIFICATION</span>
+                <span class="conf-badge">{top_score*100:.1f}% confidence</span>
                 <div class="name">{top_label}</div>
-                <div class="conf-badge">{top_score*100:.1f}% confidence</div>
             </div>
             """, unsafe_allow_html=True)
 
-            # Metrics row
-            m1, m2, m3 = st.columns(3)
+            m1, m2 = st.columns(2)
             with m1:
-                st.markdown(f'<div class="metric-box"><div class="metric-label">Characters</div><div class="metric-num">{len(text_used):,}</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="metric-box"><div class="metric-num">{n_chars:,}</div><div class="metric-sub">Characters</div></div>', unsafe_allow_html=True)
             with m2:
-                st.markdown(f'<div class="metric-box"><div class="metric-label">Words</div><div class="metric-num">{len(text_used.split())}</div></div>', unsafe_allow_html=True)
-            with m3:
-                st.markdown(f'<div class="metric-box"><div class="metric-label">Category</div><div class="metric-num" style="font-size:16px;color:{top_color};">{top_icon} {top_label}</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="metric-box"><div class="metric-num">{n_words}</div><div class="metric-sub">Words</div></div>', unsafe_allow_html=True)
 
-            st.markdown('<div class="success-badge">✅ Classification complete</div>', unsafe_allow_html=True)
-            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+            st.markdown('<div style="color:#16a34a; font-size:13px; margin-top:10px;">✅ Text length is optimal for classification</div>', unsafe_allow_html=True)
 
-            # Confidence bars
-            st.markdown('<div style="font-size:14px;font-weight:700;color:#111827;margin-bottom:14px;">📊 Confidence Scores</div>', unsafe_allow_html=True)
-            bars_html = ""
+            st.write("")
+            st.markdown("**📊 Confidence Scores**")
             for label, score in sorted_results:
-                color = COLORS[label]
-                icon = ICONS[label]
+                color = COLORS.get(label, "#6b7280")
                 pct = score * 100
-                bars_html += f"""
+                st.markdown(f"""
                 <div class="bar-row">
-                    <div class="bar-header">
-                        <span class="bar-label">{icon} {label}</span>
-                        <span class="bar-pct" style="color:{color};">{pct:.1f}%</span>
-                    </div>
-                    <div class="bar-bg">
-                        <div class="bar-fill" style="width:{pct}%;background:{color};"></div>
-                    </div>
-                </div>"""
-            st.markdown(bars_html, unsafe_allow_html=True)
+                    <span class="bar-label">{label}</span>
+                    <span class="bar-pct" style="color:{color}">{pct:.1f}%</span>
+                    <div class="bar-bg"><div class="bar-fill" style="width:{pct}%; background:{color};"></div></div>
+                </div>
+                """, unsafe_allow_html=True)
 
-            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-
-            # Actions
+            st.write("")
             b1, b2 = st.columns(2)
             with b1:
-                export_data = json.dumps({"label": top_label, "scores": st.session_state.result}, indent=2)
-                st.download_button(
-                    "⬇️ Export JSON",
-                    data=export_data,
-                    file_name="classification_result.json",
-                    mime="application/json",
-                    use_container_width=True,
-                )
+                st.download_button("⬇️ Export", data=str(st.session_state.result), file_name="result.json", use_container_width=True)
             with b2:
-                st.markdown('<div class="action-btn-wrap">', unsafe_allow_html=True)
-                if st.button("🗑️ Clear Result", use_container_width=True):
+                if st.button("🗑️ Clear", use_container_width=True):
                     st.session_state.result = None
                     st.rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
-
         else:
             st.markdown("""
             <div class="placeholder-box">
-                <div class="placeholder-icon">📊</div>
-                <div class="placeholder-title">Results will appear here</div>
-                <div class="placeholder-text">
-                    Paste a news article on the left and click <b>Analyze Text</b>
-                    to see classification results and confidence scores.
-                </div>
-                <div>
-                    <span class="feature-pill">✅ News text input</span>
-                    <span class="feature-pill">✅ PDF upload</span>
-                </div>
-                <div style="margin-top:6px;">
-                    <span class="feature-pill">✅ 5-category model</span>
-                    <span class="feature-pill">✅ Confidence scores</span>
+                <div class="placeholder-icon">📈</div>
+                <div class="placeholder-title">Results Panel</div>
+                <div class="placeholder-text">Enter a news article on the left and click <b>"Analyze Text"</b> to see classification results, confidence scores, and detailed analytics.</div>
+                <div class="feature-list">
+                    <div>✅ Supports news text input</div>
+                    <div>✅ 5-category classification model</div>
+                    <div>✅ Confidence scores for all categories</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
-
         st.markdown('</div>', unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PAGE: SESSION HISTORY
-# ─────────────────────────────────────────────────────────────────────────────
+# =================== PAGE: SESSION HISTORY ===================
 elif st.session_state.page == "History":
-    st.markdown('<div class="page-title">Session History</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-sub">All classification results from this session</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title" style="font-size:22px;">Session History</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-sub">All classification results from this session</div>', unsafe_allow_html=True)
 
     hist = st.session_state.history
     total = len(hist)
     cats_used = len(set(h["category"] for h in hist)) if hist else 0
     avg_conf = (sum(h["confidence"] for h in hist) / total * 100) if total else 0.0
-    cat_counts = {}
-    for h in hist:
-        cat_counts[h["category"]] = cat_counts.get(h["category"], 0) + 1
-    top_cat = max(cat_counts, key=cat_counts.get) if cat_counts else "—"
+    top_cat = max(set(h["category"] for h in hist), key=lambda c: sum(1 for h in hist if h["category"] == c)) if hist else "—"
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.markdown(f'<div class="metric-box"><div class="metric-label">Total Articles</div><div class="metric-num">{total}</div><div class="metric-sub">analyzed</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-box"><div class="metric-label">TOTAL ARTICLES</div><div class="metric-num">{total}</div><div class="metric-sub">analyzed</div></div>', unsafe_allow_html=True)
     with c2:
-        st.markdown(f'<div class="metric-box"><div class="metric-label">Categories Used</div><div class="metric-num">{cats_used}/{len(LABELS)}</div><div class="metric-sub">of {len(LABELS)} total</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-box"><div class="metric-label">CATEGORIES USED</div><div class="metric-num">{cats_used}/{len(LABELS)}</div><div class="metric-sub">of {len(LABELS)} total</div></div>', unsafe_allow_html=True)
     with c3:
-        st.markdown(f'<div class="metric-box"><div class="metric-label">Avg Confidence</div><div class="metric-num">{avg_conf:.1f}%</div><div class="metric-sub">across session</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-box"><div class="metric-label">AVG CONFIDENCE</div><div class="metric-num">{avg_conf:.1f}%</div><div class="metric-sub">across session</div></div>', unsafe_allow_html=True)
     with c4:
-        tc = COLORS.get(top_cat, "#7c3aed")
-        ti = ICONS.get(top_cat, "")
-        st.markdown(f'<div class="metric-box"><div class="metric-label">Top Category</div><div class="metric-num" style="color:{tc};font-size:18px;">{ti} {top_cat}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-box"><div class="metric-label">TOP CATEGORY</div><div class="metric-num" style="color:#7c3aed; font-size:20px;">{top_cat}</div><div class="metric-sub">most frequent</div></div>', unsafe_allow_html=True)
 
     st.write("")
-
-    s1, s2, s3, s4 = st.columns([3, 1.2, 1.5, 1.2])
+    s1, s2, s3, s4 = st.columns([3, 1, 1, 1])
     with s1:
-        search = st.text_input("", placeholder="🔍 Search articles…", label_visibility="collapsed")
+        search = st.text_input("", placeholder="🔍 Search articles...", label_visibility="collapsed")
     with s2:
         cat_filter = st.selectbox("", ["All"] + LABELS, label_visibility="collapsed")
     with s3:
-        sort_order = st.selectbox("", ["Most Recent", "Oldest First", "Highest Confidence"], label_visibility="collapsed")
+        st.selectbox("", ["All"], label_visibility="collapsed")
     with s4:
-        st.markdown('<div class="action-btn-wrap">', unsafe_allow_html=True)
-        if st.button("🗑️ Clear All", use_container_width=True):
-            st.session_state.history = []
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+        sort_order = st.selectbox("", ["Most Recent", "Oldest First", "Highest Confidence"], label_visibility="collapsed")
 
-    filtered = hist[:]
+    filtered = hist
     if search:
         filtered = [h for h in filtered if search.lower() in h["text"].lower()]
     if cat_filter != "All":
@@ -573,80 +420,40 @@ elif st.session_state.page == "History":
     elif sort_order == "Highest Confidence":
         filtered = sorted(filtered, key=lambda h: -h["confidence"])
 
-    st.caption(f"**{len(filtered)}** article{'s' if len(filtered) != 1 else ''}")
+    top_row = st.columns([1, 1])
+    with top_row[0]:
+        st.caption(f"{len(filtered)} article{'s' if len(filtered) != 1 else ''}")
+    with top_row[1]:
+        cc1, cc2 = st.columns(2)
+        with cc1:
+            st.button("⬇️ Export All", use_container_width=True)
+        with cc2:
+            if st.button("🗑️ Clear History", use_container_width=True):
+                st.session_state.history = []
+                st.rerun()
 
     if not filtered:
         st.info("No articles analyzed yet. Go to the Classifier tab to get started.")
-    else:
-        for h in filtered:
-            color = COLORS.get(h["category"], "#6b7280")
-            icon = ICONS.get(h["category"], "")
-            snippet = h["text"][:100] + ("…" if len(h["text"]) > 100 else "")
-            conf_pct = h["confidence"] * 100
-            st.markdown(f"""
-            <div class="history-row">
-                <span class="history-cat" style="color:{color};">{icon} {h['category']}</span>
-                <span class="history-text">{snippet}</span>
-                <span class="history-conf" style="color:{color};">{conf_pct:.1f}%</span>
-                <span class="history-time">🕐 {h['time']}</span>
-            </div>
-            """, unsafe_allow_html=True)
+    for h in filtered:
+        color = COLORS.get(h["category"], "#6b7280")
+        snippet = h["text"][:90] + ("..." if len(h["text"]) > 90 else "")
+        st.markdown(f"""
+        <div class="history-row">
+            <div class="history-cat" style="color:{color}">{h['category']}</div>
+            <div class="history-text">{snippet}</div>
+            <div class="history-conf" style="color:{color}">{h['confidence']*100:.1f}%</div>
+            <div class="history-meta">🕐 {h['time']}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PAGE: ABOUT
-# ─────────────────────────────────────────────────────────────────────────────
+# =================== PAGE: ABOUT ===================
 elif st.session_state.page == "About":
-    col1, col2 = st.columns([2, 1], gap="medium")
-
-    with col1:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown('<div class="card-title">About this App</div>', unsafe_allow_html=True)
-        st.markdown('<div class="card-sub">Cambodian News Classifier · Multi-class AI Analysis</div>', unsafe_allow_html=True)
-        st.markdown(f"""
-        <p style="font-size:14px;color:#374151;line-height:1.8;">
-            This tool classifies Cambodian news articles into one of <b>5 categories</b>
-            using a fine-tuned <b>RoBERTa</b> model. Paste text directly or upload a PDF,
-            and the model returns confidence scores across all categories.
-        </p>
-        <div class="about-label">Hugging Face Model</div>
-        <code style="font-size:13px;background:#f3f4f6;padding:5px 12px;border-radius:8px;color:#374151;display:inline-block;">{REPO_ID}</code>
-        <div class="about-label">Categories</div>
-        <div style="margin-top:4px;">
-        """, unsafe_allow_html=True)
-        for label in LABELS:
-            st.markdown(f'<span class="cat-pill" style="background:{COLORS[label]};">{ICONS[label]} {label}</span>', unsafe_allow_html=True)
-        st.markdown("""
-        </div>
-        <div class="about-label">⚠️ Label Mismatch Fix</div>
-        <div class="warn-box">
-            If your app shows wrong categories (e.g. Economics → Health), the
-            <code>LABELS</code> list order in <code>app.py</code> must exactly match
-            the label order used during model training. A single position mismatch
-            shifts all predictions to wrong classes.
-        </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col2:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown('<div class="card-title">Session Stats</div>', unsafe_allow_html=True)
-        st.markdown('<div class="card-sub">Current session</div>', unsafe_allow_html=True)
-        hist = st.session_state.history
-        total = len(hist)
-        avg_conf = (sum(h["confidence"] for h in hist) / total * 100) if total else 0.0
-        st.markdown(f"""
-        <div class="metric-box" style="margin-bottom:10px;">
-            <div class="metric-label">Articles Analyzed</div>
-            <div class="metric-num">{total}</div>
-        </div>
-        <div class="metric-box" style="margin-bottom:10px;">
-            <div class="metric-label">Avg Confidence</div>
-            <div class="metric-num">{avg_conf:.1f}%</div>
-        </div>
-        <div class="metric-box">
-            <div class="metric-label">Model</div>
-            <div style="font-size:13px;font-weight:600;color:#111827;margin-top:4px;">RoBERTa</div>
-            <div class="metric-sub">Fine-tuned · HF Hub</div>
-        </div>
-        </div>
-        """, unsafe_allow_html=True)
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">About this app</div>', unsafe_allow_html=True)
+    st.write(
+        "This tool classifies Cambodian news articles into one of 5 categories "
+        f"({', '.join(LABELS)}) using a fine-tuned RoBERTa model. "
+        "Paste text directly or upload a PDF, and the model returns confidence scores across all categories."
+    )
+    st.write("Model hosted on Hugging Face Hub:", REPO_ID)
+    st.markdown('</div>', unsafe_allow_html=True)
