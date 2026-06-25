@@ -25,7 +25,40 @@ st.markdown("""
 html, body, [class*="css"]  {
     font-family: 'Inter', sans-serif;
 }
+.stApp {
+    background-color: #f5f6f8 !important;
+}
 .block-container { padding-top: 1.2rem; max-width: 1200px; }
+
+/* Make Streamlit's native buttons in the navbar look like white pill tabs */
+div[data-testid="column"] .stButton > button {
+    background-color: white;
+    color: #374151;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 13px;
+}
+div[data-testid="column"] .stButton > button[kind="primary"] {
+    background-color: #14306b;
+    color: white;
+    border: none;
+}
+/* Text area / inputs forced to light styling */
+.stTextArea textarea, .stTextInput input {
+    background-color: #f9fafb !important;
+    color: #111827 !important;
+    border: 1px solid #e5e7eb !important;
+}
+.analyze-btn-wrap .stButton > button {
+    background-color: #ef4444 !important;
+    color: white !important;
+    border: none !important;
+    font-weight: 700;
+}
+.analyze-btn-wrap .stButton > button:hover {
+    background-color: #dc2626 !important;
+}
 
 .navbar {
     background: #14306b;
@@ -222,7 +255,9 @@ if st.session_state.page == "Classifier":
         n_words = len(text.split()) if text else 0
         st.caption(f"{n_chars:,} chars · {n_words} words")
 
-        analyze = st.button("✨ Analyze Text", use_container_width=True, type="primary")
+        st.markdown('<div class="analyze-btn-wrap">', unsafe_allow_html=True)
+        analyze = st.button("✨ Analyze Text", use_container_width=True, type="primary", key="analyze_btn")
+        st.markdown('</div>', unsafe_allow_html=True)
         if analyze and text.strip():
             result = classify(text)
             st.session_state.result = result
