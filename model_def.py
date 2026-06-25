@@ -1,6 +1,7 @@
 import torch.nn as nn
 from transformers import RobertaModel
 
+
 class NewsClassifier(nn.Module):
     def __init__(self, num_labels=5):
         super().__init__()
