@@ -28,7 +28,19 @@ html, body, [class*="css"]  {
 .stApp {
     background-color: #f5f6f8 !important;
 }
-.block-container { padding-top: 1.2rem; max-width: 1200px; }
+
+/* Hide Streamlit's default top toolbar so it doesn't overlap our navbar */
+header[data-testid="stHeader"] {
+    background: transparent;
+    height: 0;
+}
+div[data-testid="stToolbar"] {
+    display: none;
+}
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+
+.block-container { padding-top: 2rem !important; max-width: 1200px; }
 
 /* Make Streamlit's native buttons in the navbar look like white pill tabs */
 div[data-testid="column"] .stButton > button {
