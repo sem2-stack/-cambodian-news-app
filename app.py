@@ -63,33 +63,57 @@ div[data-testid="column"] .stButton > button[kind="primary"] {
     border: 1px solid #e5e7eb !important;
 }
 .analyze-btn-wrap .stButton > button {
-    background-color: #ef4444 !important;
+    background-color: #16336e !important;
     color: white !important;
     border: none !important;
     font-weight: 700;
 }
 .analyze-btn-wrap .stButton > button:hover {
-    background-color: #dc2626 !important;
+    background-color: #0f2554 !important;
 }
 
 .navbar {
-    background: #14306b;
+    background: #16336e;
     color: white;
     padding: 14px 28px;
-    border-radius: 12px;
+    border-radius: 10px 10px 0 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 26px;
+    margin-bottom: 0;
 }
 .navbar-left { display: flex; align-items: center; gap: 12px; }
 .navbar-logo {
-    width: 36px; height: 36px; border-radius: 9px;
+    width: 34px; height: 34px; border-radius: 9px;
     background: #2563eb; display: flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 16px;
+    font-weight: 700; font-size: 15px;
 }
-.navbar-title { font-size: 15px; font-weight: 700; line-height: 1.2; }
-.navbar-sub { font-size: 10px; opacity: 0.65; letter-spacing: 0.5px; }
+.navbar-title { font-size: 14px; font-weight: 700; line-height: 1.2; }
+.navbar-sub { font-size: 10px; opacity: 0.6; letter-spacing: 0.5px; }
+
+.navbar-wrap {
+    background: #16336e;
+    border-radius: 10px;
+    padding: 0 10px 8px 0;
+    margin-bottom: 26px;
+}
+div[data-testid="column"] .stButton > button {
+    background-color: transparent !important;
+    color: rgba(255,255,255,0.75) !important;
+    border: none !important;
+    border-radius: 18px;
+    font-weight: 500;
+    font-size: 13px;
+    box-shadow: none !important;
+}
+div[data-testid="column"] .stButton > button[kind="primary"] {
+    background-color: rgba(255,255,255,0.12) !important;
+    color: white !important;
+    font-weight: 600;
+}
+div[data-testid="column"] .stButton > button:hover {
+    color: white !important;
+}
 
 .card {
     background: white;
@@ -175,6 +199,7 @@ if "last_text" not in st.session_state:
     st.session_state.last_text = ""
 
 # ---------------- NAVBAR ----------------
+st.markdown('<div class="navbar-wrap">', unsafe_allow_html=True)
 nav_l, nav_r = st.columns([3, 2])
 with nav_l:
     st.markdown("""
@@ -189,22 +214,28 @@ with nav_l:
     </div>
     """, unsafe_allow_html=True)
 with nav_r:
+    st.write("")
     b1, b2, b3 = st.columns(3)
     with b1:
-        if st.button("📰 Classifier", use_container_width=True,
+        if st.button("📰 Classifier ●" if st.session_state.page == "Classifier" else "📰 Classifier",
+                      use_container_width=True,
                       type="primary" if st.session_state.page == "Classifier" else "secondary"):
             st.session_state.page = "Classifier"
             st.rerun()
     with b2:
-        if st.button("🕐 Session History", use_container_width=True,
+        if st.button("🕐 Session History ●" if st.session_state.page == "History" else "🕐 Session History",
+                      use_container_width=True,
                       type="primary" if st.session_state.page == "History" else "secondary"):
             st.session_state.page = "History"
             st.rerun()
     with b3:
-        if st.button("ℹ️ About", use_container_width=True,
+        if st.button("ℹ️ About ●" if st.session_state.page == "About" else "ℹ️ About",
+                      use_container_width=True,
                       type="primary" if st.session_state.page == "About" else "secondary"):
             st.session_state.page = "About"
             st.rerun()
+st.markdown('</div>', unsafe_allow_html=True)
+st.write("")
 
 
 @st.cache_resource
@@ -308,6 +339,8 @@ if st.session_state.page == "Classifier":
                 st.markdown(f'<div class="metric-box"><div class="metric-num">{n_chars:,}</div><div class="metric-sub">Characters</div></div>', unsafe_allow_html=True)
             with m2:
                 st.markdown(f'<div class="metric-box"><div class="metric-num">{n_words}</div><div class="metric-sub">Words</div></div>', unsafe_allow_html=True)
+
+            st.markdown('<div style="color:#16a34a; font-size:13px; margin-top:10px;">✅ Text length is optimal for classification</div>', unsafe_allow_html=True)
 
             st.write("")
             st.markdown("**📊 Confidence Scores**")
