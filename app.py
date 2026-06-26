@@ -1,6 +1,7 @@
 import streamlit as st
 import torch
 import datetime
+import json
 from huggingface_hub import hf_hub_download
 from transformers import RobertaTokenizerFast
 from model_def import NewsClassifier
@@ -192,6 +193,17 @@ div[data-testid="column"] .stButton > button:hover {
 .history-text { font-size: 13px; color: #374151; flex: 1; padding: 0 14px; }
 .history-meta { font-size: 12px; color: #9ca3af; white-space: nowrap; }
 .history-conf { font-weight: 700; font-size: 13px; margin-right: 14px; }
+
+/* Correction badge */
+.correction-badge {
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 12px;
+    color: #92400e;
+    margin-bottom: 12px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -204,8 +216,10 @@ if "result" not in st.session_state:
     st.session_state.result = None
 if "last_text" not in st.session_state:
     st.session_state.last_text = ""
-if "debug_info" not in st.session_state:
-    st.session_state.debug_info = None
+if "correction_applied" not in st.session_state:
+    st.session_state.correction_applied = False
+if "original_result" not in st.session_state:
+    st.session_state.original_result = None
 
 # ==================== NAVBAR ====================
 st.markdown('<div class="navbar-wrap">', unsafe_allow_html=True)
@@ -258,8 +272,32 @@ def load_model():
     return model, tokenizer
 
 # ==================== CLASSIFICATION FUNCTIONS ====================
+def get_politics_score(text):
+    """Calculate how likely the text is about politics based on keywords"""
+    text_lower = text.lower()
+    
+    politics_keywords = [
+        'រដ្ឋាភិបាល', 'រដ្ឋមន្ត្រី', 'នាយករដ្ឋមន្ត្រី', 'គណបក្ស', 'បោះឆ្នោត', 
+        'សភា', 'រដ្ឋសភា', 'ព្រឹទ្ធសភា', 'គោលនយោបាយ', 'រដ្ឋបាល',
+        'government', 'prime minister', 'minister', 'election', 'parliament',
+        'senate', 'policy', 'administration', 'political', 'democratic',
+        'អភិបាល', 'អនុប្រធាន', 'ប្រធាន', 'គណៈ', 'ក្រសួង'
+    ]
+    
+    health_keywords = [
+        'សុខភាព', 'ពេទ្យ', 'មន្ទីរពេទ្យ', 'ជំងឺ', 'វេជ្ជបណ្ឌិត',
+        'ថ្នាំ', 'ព្យាបាល', 'រោគសញ្ញា', 'ការពារ', 'អនាម័យ',
+        'health', 'hospital', 'doctor', 'disease', 'medical',
+        'treatment', 'medicine', 'symptom', 'covid', 'pandemic'
+    ]
+    
+    politics_count = sum(1 for kw in politics_keywords if kw in text_lower)
+    health_count = sum(1 for kw in health_keywords if kw in text_lower)
+    
+    return politics_count, health_count
+
 def classify_text(text):
-    """Classify text and return probabilities with potential correction"""
+    """Classify text and return probabilities with correction"""
     inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=512)
     with torch.no_grad():
         logits = model(**inputs)
@@ -268,58 +306,25 @@ def classify_text(text):
     # Get raw predictions
     raw_results = {LABELS[i]: probs[i].item() for i in range(len(LABELS))}
     
-    # Apply keyword-based correction to improve Politics detection
-    corrected_results = apply_keyword_correction(text, raw_results)
+    # Check if correction is needed
+    politics_count, health_count = get_politics_score(text)
+    needs_correction = False
     
-    return corrected_results
-
-def apply_keyword_correction(text, results):
-    """Apply domain knowledge to correct misclassifications"""
-    text_lower = text.lower()
-    
-    # Politics keywords (in Khmer and English)
-    politics_keywords = [
-        'រដ្ឋាភិបាល', 'រដ្ឋមន្ត្រី', 'នាយករដ្ឋមន្ត្រី', 'គណបក្ស', 'បោះឆ្នោត', 
-        'សភា', 'រដ្ឋសភា', 'ព្រឹទ្ធសភា', 'គោលនយោបាយ', 'រដ្ឋបាល',
-        'government', 'prime minister', 'minister', 'election', 'parliament',
-        'senate', 'policy', 'administration', 'political', 'democratic'
-    ]
-    
-    # Health keywords
-    health_keywords = [
-        'សុខភាព', 'ពេទ្យ', 'មន្ទីរពេទ្យ', 'ជំងឺ', 'វេជ្ជបណ្ឌិត',
-        'ថ្នាំ', 'ព្យាបាល', 'រោគសញ្ញា', 'ការពារ', 'អនាម័យ',
-        'health', 'hospital', 'doctor', 'disease', 'medical',
-        'treatment', 'medicine', 'symptom', 'covid', 'pandemic'
-    ]
-    
-    # Check if text has strong politics signals
-    politics_score = sum(1 for kw in politics_keywords if kw in text_lower)
-    health_score = sum(1 for kw in health_keywords if kw in text_lower)
-    
-    # If text has politics keywords but model predicts Health, boost Politics
-    if politics_score > health_score and results["Health"] > results["Politics"]:
-        # Boost Politics and reduce Health
-        boost_factor = 1.3 + (politics_score * 0.05)
-        results["Politics"] = results["Politics"] * boost_factor
-        results["Health"] = results["Health"] * 0.8
+    # If text has politics keywords but model predicts Health, apply correction
+    if politics_count > health_count and raw_results["Health"] > raw_results["Politics"]:
+        # Apply correction
+        boost_factor = 1.3 + (politics_count * 0.05)
+        raw_results["Politics"] = raw_results["Politics"] * boost_factor
+        raw_results["Health"] = raw_results["Health"] * 0.8
         
-        # Normalize to maintain sum = 1
-        total = sum(results.values())
-        for key in results:
-            results[key] = results[key] / total
-    
-    # If text has health keywords but model predicts Politics, boost Health
-    elif health_score > politics_score and results["Politics"] > results["Health"]:
-        boost_factor = 1.3 + (health_score * 0.05)
-        results["Health"] = results["Health"] * boost_factor
-        results["Politics"] = results["Politics"] * 0.8
+        # Normalize
+        total = sum(raw_results.values())
+        for key in raw_results:
+            raw_results[key] = raw_results[key] / total
         
-        total = sum(results.values())
-        for key in results:
-            results[key] = results[key] / total
+        needs_correction = True
     
-    return results
+    return raw_results, needs_correction
 
 def extract_pdf_text(file):
     from pypdf import PdfReader
@@ -384,27 +389,25 @@ if st.session_state.page == "Classifier":
         
         if analyze and text.strip():
             with st.spinner("🔍 Analyzing..."):
-                result = classify_text(text)
+                result, correction_applied = classify_text(text)
+                
+                # Store results
                 st.session_state.result = result
                 st.session_state.last_text = text
+                st.session_state.correction_applied = correction_applied
                 
                 top_label = max(result, key=result.get)
                 top_confidence = result[top_label]
                 
                 # Add to history
                 st.session_state.history.insert(0, {
-                    "text": text.strip().replace("\n", " ")[:500],  # Limit text length in history
+                    "text": text.strip().replace("\n", " ")[:500],
                     "category": top_label,
                     "confidence": top_confidence,
                     "time": datetime.datetime.now().strftime("%I:%M %p"),
-                    "all_scores": result.copy()
+                    "all_scores": result.copy(),
+                    "correction_applied": correction_applied
                 })
-                
-                # Show debug info if Politics detected with high confidence
-                if top_label == "Health" and any(kw in text.lower() for kw in ['government', 'prime minister', 'minister', 'election']):
-                    st.session_state.debug_info = f"⚠️ Politics-related text was classified as Health. Using keyword correction."
-                else:
-                    st.session_state.debug_info = None
                 
                 st.rerun()
         elif analyze:
@@ -422,9 +425,15 @@ if st.session_state.page == "Classifier":
             sorted_results = sorted(st.session_state.result.items(), key=lambda x: -x[1])
             top_label, top_score = sorted_results[0]
 
-            # Show debug warning if applicable
-            if st.session_state.debug_info:
-                st.warning(st.session_state.debug_info)
+            # Show correction badge if applied
+            if st.session_state.correction_applied:
+                st.markdown("""
+                <div class="correction-badge">
+                    🔧 <strong>Correction Applied:</strong> This text contains politics-related keywords 
+                    but was initially classified as Health. The system has applied smart keyword correction 
+                    to improve accuracy.
+                </div>
+                """, unsafe_allow_html=True)
 
             # Top result card
             st.markdown(f"""
@@ -449,19 +458,28 @@ if st.session_state.page == "Classifier":
             for label, score in sorted_results:
                 color = COLORS.get(label, "#6b7280")
                 pct = score * 100
-                st.markdown(f"""
-                <div class="bar-row">
-                    <span class="bar-label">{label}</span>
-                    <span class="bar-pct" style="color:{color}">{pct:.1f}%</span>
-                    <div class="bar-bg"><div class="bar-fill" style="width:{pct}%; background:{color};"></div></div>
-                </div>
-                """, unsafe_allow_html=True)
+                # Highlight Politics if correction was applied
+                if st.session_state.correction_applied and label == "Politics":
+                    st.markdown(f"""
+                    <div class="bar-row">
+                        <span class="bar-label">{label} 🔧</span>
+                        <span class="bar-pct" style="color:{color}">{pct:.1f}%</span>
+                        <div class="bar-bg"><div class="bar-fill" style="width:{pct}%; background:{color};"></div></div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                    <div class="bar-row">
+                        <span class="bar-label">{label}</span>
+                        <span class="bar-pct" style="color:{color}">{pct:.1f}%</span>
+                        <div class="bar-bg"><div class="bar-fill" style="width:{pct}%; background:{color};"></div></div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
             # Action buttons
             st.write("")
             b1, b2, b3 = st.columns(3)
             with b1:
-                import json
                 json_str = json.dumps(st.session_state.result, indent=2)
                 st.download_button(
                     "⬇️ Export", 
@@ -472,7 +490,7 @@ if st.session_state.page == "Classifier":
             with b2:
                 if st.button("🔄 Reset", use_container_width=True):
                     st.session_state.result = None
-                    st.session_state.debug_info = None
+                    st.session_state.correction_applied = False
                     st.rerun()
         else:
             st.markdown("""
@@ -501,17 +519,20 @@ elif st.session_state.page == "History":
     cats_used = len(set(h["category"] for h in hist)) if hist else 0
     avg_conf = (sum(h["confidence"] for h in hist) / total * 100) if total else 0.0
     top_cat = max(set(h["category"] for h in hist), key=lambda c: sum(1 for h in hist if h["category"] == c)) if hist else "—"
+    corrected_count = sum(1 for h in hist if h.get("correction_applied", False))
 
     # Summary metrics
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
-        st.markdown(f'<div class="metric-box"><div class="metric-label">📊 TOTAL ARTICLES</div><div class="metric-num">{total}</div><div class="metric-sub">analyzed</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-box"><div class="metric-label">📊 TOTAL</div><div class="metric-num">{total}</div><div class="metric-sub">articles</div></div>', unsafe_allow_html=True)
     with c2:
-        st.markdown(f'<div class="metric-box"><div class="metric-label">🏷️ CATEGORIES USED</div><div class="metric-num">{cats_used}/{len(LABELS)}</div><div class="metric-sub">of {len(LABELS)} total</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-box"><div class="metric-label">🏷️ CATEGORIES</div><div class="metric-num">{cats_used}/{len(LABELS)}</div><div class="metric-sub">used</div></div>', unsafe_allow_html=True)
     with c3:
         st.markdown(f'<div class="metric-box"><div class="metric-label">🎯 AVG CONFIDENCE</div><div class="metric-num">{avg_conf:.1f}%</div><div class="metric-sub">across session</div></div>', unsafe_allow_html=True)
     with c4:
         st.markdown(f'<div class="metric-box"><div class="metric-label">🔥 TOP CATEGORY</div><div class="metric-num" style="color:{COLORS.get(top_cat, '#7c3aed')}; font-size:20px;">{top_cat}</div><div class="metric-sub">most frequent</div></div>', unsafe_allow_html=True)
+    with c5:
+        st.markdown(f'<div class="metric-box"><div class="metric-label">🔧 CORRECTIONS</div><div class="metric-num" style="color:#f59e0b;">{corrected_count}</div><div class="metric-sub">applied</div></div>', unsafe_allow_html=True)
 
     st.write("")
     
@@ -541,13 +562,13 @@ elif st.session_state.page == "History":
         st.caption(f"Showing {len(filtered)} of {total} article{'s' if total != 1 else ''}")
     with col_actions[1]:
         if st.button("⬇️ Export All", use_container_width=True):
-            import json
             json_str = json.dumps([
                 {
                     "text": h["text"],
                     "category": h["category"],
                     "confidence": h["confidence"],
-                    "time": h["time"]
+                    "time": h["time"],
+                    "correction_applied": h.get("correction_applied", False)
                 } for h in hist
             ], indent=2)
             st.download_button(
@@ -574,9 +595,9 @@ elif st.session_state.page == "History":
             color = COLORS.get(h["category"], "#6b7280")
             snippet = h["text"][:100] + ("..." if len(h["text"]) > 100 else "")
             
-            # Create an expandable history item
+            # Create history item
             with st.container():
-                col1, col2, col3, col4 = st.columns([1.5, 4, 1, 1])
+                col1, col2, col3, col4, col5 = st.columns([1.5, 4, 0.8, 0.8, 0.8])
                 with col1:
                     st.markdown(f'<span style="color:{color}; font-weight:700; font-size:14px;">{h["category"]}</span>', unsafe_allow_html=True)
                 with col2:
@@ -584,7 +605,10 @@ elif st.session_state.page == "History":
                 with col3:
                     st.markdown(f'<span style="color:{color}; font-weight:700; font-size:13px;">{h["confidence"]*100:.1f}%</span>', unsafe_allow_html=True)
                 with col4:
-                    st.markdown(f'<span style="font-size:12px; color:#9ca3af;">🕐 {h["time"]}</span>', unsafe_allow_html=True)
+                    if h.get("correction_applied", False):
+                        st.markdown('<span style="font-size:16px;">🔧</span>', unsafe_allow_html=True)
+                with col5:
+                    st.markdown(f'<span style="font-size:12px; color:#9ca3af;">{h["time"]}</span>', unsafe_allow_html=True)
                 
                 # Show all scores in expander
                 if "all_scores" in h:
@@ -630,6 +654,7 @@ elif st.session_state.page == "About":
     - **Smart Correction**: Keyword-based correction improves Politics vs Health classification
     - **Session History**: Track all classifications with filters and search
     - **Export Results**: Download classification data as JSON
+    - **Correction Tracking**: See when and how corrections are applied
     
     ### 🛠️ Technical Details
     
@@ -637,6 +662,15 @@ elif st.session_state.page == "About":
     - **Training Data**: Cambodian news articles
     - **Framework**: PyTorch + Transformers
     - **Deployment**: Streamlit Cloud
+    
+    ### 🔧 Smart Correction System
+    
+    The app includes a smart correction system that:
+    1. Detects politics-related keywords in the text
+    2. If the model predicts Health but politics keywords are present, it applies a boost
+    3. Politics scores are increased by 30-50% based on keyword frequency
+    4. Health scores are reduced by 20%
+    5. All scores are re-normalized to sum to 100%
     
     ### 📊 Model Performance
     
@@ -651,7 +685,7 @@ elif st.session_state.page == "About":
     
     ---
     
-    **Version**: 2.0  
+    **Version**: 2.1  
     **Last Updated**: June 2026
     """)
     
