@@ -7,8 +7,8 @@ from model_def import NewsClassifier
 
 REPO_ID = "Theara2/cambodian-news-roberta"
 LABELS = ["Politics", "Technology", "Economics", "Health", "Sports"]
-DEBUG_MODE = True
-DEBUG_LABELS =  ["Politics", "Technology", "Economics", "Health", "Sports"]
+DEBUG_MODE = False
+DEBUG_LABELS = ["index_0", "index_1", "index_2", "index_3", "index_4"]
 COLORS = {
     "Politics": "#8b5cf6",
     "Technology": "#22c55e",
