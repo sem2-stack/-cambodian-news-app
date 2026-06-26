@@ -7,12 +7,19 @@ from model_def import NewsClassifier
 
 REPO_ID = "Theara2/cambodian-news-roberta"
 LABELS = ["Politics", "Technology", "Economics", "Health", "Sports"]
+DEBUG_MODE = True  # set to False once label order is confirmed
+DEBUG_LABELS = ["index_0", "index_1", "index_2", "index_3", "index_4"]
 COLORS = {
     "Politics": "#8b5cf6",
     "Technology": "#22c55e",
     "Economics": "#3b82f6",
     "Health": "#ef4444",
     "Sports": "#f59e0b",
+    "index_0": "#8b5cf6",
+    "index_1": "#22c55e",
+    "index_2": "#3b82f6",
+    "index_3": "#ef4444",
+    "index_4": "#f59e0b",
 }
 
 st.set_page_config(page_title="Cambodian News Classifier", layout="wide")
@@ -254,7 +261,8 @@ def classify(text):
     with torch.no_grad():
         logits = model(**inputs)
         probs = torch.softmax(logits, dim=-1)[0]
-    return {LABELS[i]: probs[i].item() for i in range(len(LABELS))}
+    active_labels = DEBUG_LABELS if DEBUG_MODE else LABELS
+    return {active_labels[i]: probs[i].item() for i in range(len(active_labels))}
 
 
 def extract_pdf_text(file):
